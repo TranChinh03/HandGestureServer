@@ -6,6 +6,26 @@ from app import session
 
 router = APIRouter(prefix="/predict", tags=["Predict"])
 
+classes = ["call",
+    "dislike",
+    "fist",
+    "four",
+    "like",
+    "mute",
+    "ok",
+    "one",
+    "palm",
+    "peace",
+    "peace_inverted",
+    "rock",
+    "stop",
+    "stop_inverted",
+    "three",
+    "three2",
+    "two_up",
+    "two_up_inverted",
+    "no_gesture"];
+
 async def process_image(file):
     # Open the image file
     contents = await file.read()
@@ -40,11 +60,14 @@ async def postprocess(output):
     detections = []
     for detection in reshaped_array[0]:
         box = detection[:4].tolist()
-        confidence = float(detection[4])
         class_confidence = detection[4:].tolist()
         max_confidence = max(class_confidence)
         max_index = class_confidence.index(max_confidence)
-        detections.append({"box": box, "confidence": max_confidence, "class_id": max_index})
+        detections.append({"box": box, "confidence": max_confidence, "class_id": max_index, "class_name": classes[max_index]})
+        # Sort the data based on confidence in descending order
+        detections = sorted(detections, key=lambda x: x['confidence'], reverse=True)
+        detections = detections[0:10]
+
     return detections
 
 @router.post("")
@@ -64,4 +87,17 @@ async def upload_image(file: UploadFile = File(...)):
     prediction = session.run([output_name], {input_name: handledImage})[0]
 
     detections = await postprocess(prediction)
-    return detections
+
+    # Dictionary to keep track of highest confidence for each class_id
+    highest_confidence = {}
+    # Iterate through the data to find the highest confidence for each class_id 
+    for entry in detections:
+        class_id = entry['class_id']
+        confidence = entry['confidence']
+        if class_id not in highest_confidence or confidence > highest_confidence[class_id]['confidence']:
+            highest_confidence[class_id] = entry
+
+    # Filter out duplicates based on highest confidence for each class_id
+    filtered_data = list(highest_confidence.values())
+
+    return filtered_data
